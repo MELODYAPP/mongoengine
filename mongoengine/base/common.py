@@ -1,6 +1,6 @@
 from mongoengine.errors import NotRegistered
 
-__all__ = ('UPDATE_OPERATORS', 'get_document', '_document_registry')
+__all__ = ('UPDATE_OPERATORS', 'get_document', 'get_document_by_collection', '_document_registry')
 
 
 UPDATE_OPERATORS = set(['set', 'unset', 'inc', 'dec', 'pop', 'push',
@@ -29,3 +29,18 @@ def get_document(name):
             been imported?
         """.strip() % name)
     return doc
+
+def get_document_by_collection(name):
+    """Get a document class by its collection name. """
+    for doc in _document_registry.values():
+        collection_name = doc._get_collection_name()
+
+        if collection_name == name:
+            return doc
+
+    # XXX what error message to give ?
+    raise NotRegistered("""
+            '%s' does not match any collection name in the document registry.
+            Importing the document class automatically registers it, has it
+            been imported?
+        """.strip() % name)
