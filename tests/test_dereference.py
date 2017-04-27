@@ -632,7 +632,7 @@ class FieldTest(unittest.TestCase):
             [m for m in group_obj.members]
             self.assertEqual(q, 2)
 
-            for k, m in group_obj.members.iteritems():
+            for k, m in group_obj.members.items():
                 self.assertTrue(isinstance(m, User))
 
         # Document select_related
@@ -645,7 +645,7 @@ class FieldTest(unittest.TestCase):
             [m for m in group_obj.members]
             self.assertEqual(q, 2)
 
-            for k, m in group_obj.members.iteritems():
+            for k, m in group_obj.members.items():
                 self.assertTrue(isinstance(m, User))
 
        # Queryset select_related
@@ -659,7 +659,7 @@ class FieldTest(unittest.TestCase):
                 [m for m in group_obj.members]
                 self.assertEqual(q, 2)
 
-                for k, m in group_obj.members.iteritems():
+                for k, m in group_obj.members.items():
                     self.assertTrue(isinstance(m, User))
 
         User.drop_collection()
@@ -714,7 +714,7 @@ class FieldTest(unittest.TestCase):
             [m for m in group_obj.members]
             self.assertEqual(q, 4)
 
-            for k, m in group_obj.members.iteritems():
+            for k, m in group_obj.members.items():
                 self.assertTrue('User' in m.__class__.__name__)
 
         # Document select_related
@@ -730,7 +730,7 @@ class FieldTest(unittest.TestCase):
             [m for m in group_obj.members]
             self.assertEqual(q, 4)
 
-            for k, m in group_obj.members.iteritems():
+            for k, m in group_obj.members.items():
                 self.assertTrue('User' in m.__class__.__name__)
 
         # Queryset select_related
@@ -747,7 +747,7 @@ class FieldTest(unittest.TestCase):
                 [m for m in group_obj.members]
                 self.assertEqual(q, 4)
 
-                for k, m in group_obj.members.iteritems():
+                for k, m in group_obj.members.items():
                     self.assertTrue('User' in m.__class__.__name__)
 
         Group.objects.delete()
@@ -805,7 +805,7 @@ class FieldTest(unittest.TestCase):
             [m for m in group_obj.members]
             self.assertEqual(q, 2)
 
-            for k, m in group_obj.members.iteritems():
+            for k, m in group_obj.members.items():
                 self.assertTrue(isinstance(m, UserA))
 
         # Document select_related
@@ -821,7 +821,7 @@ class FieldTest(unittest.TestCase):
             [m for m in group_obj.members]
             self.assertEqual(q, 2)
 
-            for k, m in group_obj.members.iteritems():
+            for k, m in group_obj.members.items():
                 self.assertTrue(isinstance(m, UserA))
 
         # Queryset select_related
@@ -838,7 +838,7 @@ class FieldTest(unittest.TestCase):
                 [m for m in group_obj.members]
                 self.assertEqual(q, 2)
 
-                for k, m in group_obj.members.iteritems():
+                for k, m in group_obj.members.items():
                     self.assertTrue(isinstance(m, UserA))
 
         UserA.drop_collection()
@@ -893,7 +893,7 @@ class FieldTest(unittest.TestCase):
             [m for m in group_obj.members]
             self.assertEqual(q, 4)
 
-            for k, m in group_obj.members.iteritems():
+            for k, m in group_obj.members.items():
                 self.assertTrue('User' in m.__class__.__name__)
 
         # Document select_related
@@ -909,7 +909,7 @@ class FieldTest(unittest.TestCase):
             [m for m in group_obj.members]
             self.assertEqual(q, 4)
 
-            for k, m in group_obj.members.iteritems():
+            for k, m in group_obj.members.items():
                 self.assertTrue('User' in m.__class__.__name__)
 
         # Queryset select_related
@@ -926,7 +926,7 @@ class FieldTest(unittest.TestCase):
                 [m for m in group_obj.members]
                 self.assertEqual(q, 4)
 
-                for k, m in group_obj.members.iteritems():
+                for k, m in group_obj.members.items():
                     self.assertTrue('User' in m.__class__.__name__)
 
         Group.objects.delete()
@@ -1286,6 +1286,95 @@ class FieldTest(unittest.TestCase):
             songs = [item.song for item in playlist.items]
 
             self.assertEqual(q, 2)
+
+    def test_dynamic_field_dereference(self):
+        class Merchandise(Document):
+            name = StringField()
+            price = IntField()
+
+        class Store(Document):
+            merchandises = DynamicField()
+
+        Merchandise.drop_collection()
+        Store.drop_collection()
+
+        merchandises = {
+            '#1': Merchandise(name='foo', price=100).save(),
+            '#2': Merchandise(name='bar', price=120).save(),
+            '#3': Merchandise(name='baz', price=110).save(),
+        }
+        Store(merchandises=merchandises).save()
+
+        store = Store.objects().first()
+        for obj in store.merchandises.values():
+            self.assertFalse(isinstance(obj, Merchandise))
+
+        store.select_related()
+        for obj in store.merchandises.values():
+            self.assertTrue(isinstance(obj, Merchandise))
+
+    def test_dynamic_field_dereference_with_ordering_guarantee_on_pymongo3(self):
+        # This is because 'codec_options' is supported on pymongo3 or later
+        if IS_PYMONGO_3:
+            class OrderedDocument(Document):
+                my_metaclass = TopLevelDocumentMetaclass
+                __metaclass__ = TopLevelDocumentMetaclass
+
+                @classmethod
+                def _get_collection(cls):
+                    collection = super(OrderedDocument, cls)._get_collection()
+                    opts = CodecOptions(document_class=OrderedDict)
+
+                    return collection.with_options(codec_options=opts)
+
+            class Merchandise(Document):
+                name = StringField()
+                price = IntField()
+
+            class Store(OrderedDocument):
+                merchandises = DynamicField(container_class=OrderedDict)
+
+            Merchandise.drop_collection()
+            Store.drop_collection()
+
+            merchandises = OrderedDict()
+            merchandises['#1'] = Merchandise(name='foo', price=100).save()
+            merchandises['#2'] = Merchandise(name='bar', price=120).save()
+            merchandises['#3'] = Merchandise(name='baz', price=110).save()
+
+            Store(merchandises=merchandises).save()
+
+            store = Store.objects().first()
+
+            store.select_related()
+
+            # confirms that the load data order is same with the one at storing
+            self.assertTrue(type(store.merchandises), OrderedDict)
+            self.assertEqual(','.join(store.merchandises.keys()), '#1,#2,#3')
+
+    def test_dereference_dbref_in_dict_field(self):
+        # Github issue: #1539
+        class DictDocument(Document):
+            meta = {'collection': 'dict_documents'}
+            data = DictField(default=dict)
+
+        class User(Document):
+            meta = {'collection': 'users'}
+
+
+        DictDocument.drop_collection()
+        User.drop_collection()
+
+        user_foo = User().save()
+
+        # To trigger the bug, but DBRef needs to be a simple one, without the
+        # _cls field.
+        DictDocument._get_collection().insert_one({'data': {
+            'user_foo': DBRef(collection="users", id=user_foo.id)
+        }})
+
+        dict_queried = DictDocument.objects.first()
+        self.assertEqual(dict_queried.data["user_foo"].id, user_foo.id)
 
 if __name__ == '__main__':
     unittest.main()
