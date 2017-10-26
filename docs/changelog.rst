@@ -6,6 +6,14 @@ Development
 ===========
 - (Fill this out as you fix issues and develop your features).
 
+Changes in 0.14.1
+=================
+- Removed SemiStrictDict and started using a regular dict for `BaseDocument._data` #1630
+- Added support for the `$position` param in the `$push` operator #1566
+- Fixed `DateTimeField` interpreting an empty string as today #1533
+- Added a missing `__ne__` method to the `GridFSProxy` class #1632
+- Fixed `BaseQuerySet._fields_to_db_fields` #1553
+
 Changes in 0.14.0
 =================
 - BREAKING CHANGE: Removed the `coerce_types` param from `QuerySet.as_pymongo` #1549
